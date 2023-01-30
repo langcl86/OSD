@@ -147,8 +147,8 @@ namespace OSD
 
         private void Completed(object sender, AsyncCompletedEventArgs e)
         {
-            Thread.Sleep(1000);
             if (e.Cancelled) err = true;
+            Thread.Sleep(1000);
         }
 
         private Process newProcess(string filename, string args)
@@ -202,10 +202,13 @@ namespace OSD
             // Download Driver Package
             // 
 
-
             try
             {
                 if (string.IsNullOrEmpty(this.TargetModel)) throw new ArgumentNullException("TargetModel Is Not Set");
+
+                TargetOS = "Windows10,x64";
+                string os = TargetOS.Split(',')[0];
+                string arc = TargetOS.Split(',')[1];
 
                 while (!err)
                 {
@@ -218,7 +221,7 @@ namespace OSD
                     nsmgr.AddNamespace("ns", "openmanage/cm/dm");
 
                     string pathModel = "//ns:DriverPackage/ns:SupportedSystems/ns:Brand/ns:Model[@name='" + TargetModel + "']";
-                    string pathOS = "/ns:SupportedOperatingSystems/ns:OperatingSystem[@osCode='Windows10' and @osArch='x64']";
+                    string pathOS = "/ns:SupportedOperatingSystems/ns:OperatingSystem[@osCode='" + os + "' and @osArch='" + arc + "']";
                     string xPath = String.Format("{0}/../../..{1}/../..", pathModel, pathOS);
                     XmlNode TargetNode = xDoc.SelectNodes(xPath, nsmgr)[0];
 
@@ -233,7 +236,7 @@ namespace OSD
                         "\r\nFound Driver Package - " +
                         "\r\n Model: {0} \r\n Operating System: {1} \r\n  Architecture: {2}" +
                         "\r\n Release: {3} \r\n Version: {4}\r\n Release Date: {5}\r\n",
-                        TargetModel, "Windows 10", "x64",
+                        TargetModel, os, arc,
                         GetAttributeValue(TargetNode, "releaseID"), Version, Date
                         );
 
