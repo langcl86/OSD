@@ -20,17 +20,17 @@ namespace OSD
         private bool err;
 
         public bool NetworkEnabled;
-        public string DeployDevice;
+        public string TargetOS;
+        public string TargetModel;
         public string TargetDevice;
-        public string DeviceModel;
+        public string DeployDevice;
         public string DriverCatalog;
         public string DriverPackage;
         public string DriverPath;
-        public string DriverOS;
 
         public Drivers()
         {
-            Console.WriteLine("**WARNING**\r\nTarget Device Not Set");
+            Console.WriteLine("\r\n**WARNING**\r\nTarget Device Not Set\r\n");
             NetCheck();
         }
 
@@ -69,29 +69,33 @@ namespace OSD
                         string dest = Path.Combine(TargetDevice, filename.Replace(ext, ""));
                         Directory.CreateDirectory(dest);
 
+                        string proc = string.Empty;
+                        string param = string.Empty;
                         switch (ext)
                         {
                             case ".CAB":
-                                string str = String.Format("{0} -F:* {1}", cabFile, dest);
-                                if (newProcess("expand.exe", str).ExitCode != 0) throw new Exception("Failed to extract Driver Catalog");
+                                proc = "EXPAND.EXE";
+                                param = String.Format("{0} -F:* {1}", cabFile, dest);
                                 break;
 
                             case ".EXE":
+                                proc = cabFile;
+                                param = "/ s / e =" + dest;
                                 break;
 
                             default: throw new ArgumentException("Unrecognized file type");
                         }
 
-
+                        if (newProcess(proc, param).ExitCode != 0) throw new Exception();
                         DriverPath = dest;
                     }
-
                     break;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine("\r\nFailed to extract Driver Catalog");
+                Console.WriteLine(ex.Message + "\r\n");
                 return null;
             }
 
@@ -105,24 +109,23 @@ namespace OSD
                 if (string.IsNullOrEmpty(address) ||
                     string.IsNullOrEmpty(filename)) throw new ArgumentNullException();
 
-                if (!NetworkEnabled) throw new IOException();
-
-                System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+                if (!NetworkEnabled) throw new IOException("No Network Connection Found");
 
                 Uri uri = new Uri(address);
                 WebClient client = new WebClient();
+                System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
                 client.DownloadProgressChanged += new DownloadProgressChangedEventHandler(inProgress);
                 client.DownloadFileCompleted += new AsyncCompletedEventHandler(Completed);
                 client.DownloadFileAsync(uri, filename);
                 while (client.IsBusy) Thread.Sleep(1000);
-
                 if (err) throw new Exception("Download FAILED");
+                Console.WriteLine("\r\nDownload Completed\r\n");
                 return true;
             }
 
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine("\r\n" + ex.Message + "\r\n");
                 return false;
             }
 
@@ -130,17 +133,22 @@ namespace OSD
 
         private void inProgress(object sender, DownloadProgressChangedEventArgs e)
         {
+            double bytesTaken = e.BytesReceived;
+            bytesTaken = Math.Round(bytesTaken, 4);
+            double bytesTotal = e.TotalBytesToReceive;
+            bytesTotal = Math.Round(bytesTotal, 4);
+
             Console.WriteLine("{0}    downloaded {1} of {2} MB. {3} % complete...",
             (string)e.UserState,
-            e.BytesReceived / Math.Pow(1024, 2),
-            e.TotalBytesToReceive / Math.Pow(1024, 2),
+            bytesTaken / Math.Pow(1024, 2),
+            bytesTotal / Math.Pow(1024, 2),
             e.ProgressPercentage);
         }
 
         private void Completed(object sender, AsyncCompletedEventArgs e)
         {
-            if (!e.Cancelled) Console.WriteLine("Download Completed");
-            else err = true;
+            Thread.Sleep(1000);
+            if (e.Cancelled) err = true;
         }
 
         private Process newProcess(string filename, string args)
@@ -159,8 +167,8 @@ namespace OSD
 
         public void getCatalog()
         {
-            string target = TargetDevice;
             err = false;
+            string target = TargetDevice;
 
             try
             {
@@ -177,20 +185,27 @@ namespace OSD
                     DriverCatalog = xml;
                     getPackage();
                 }
+
+                else throw new IOException("Failed to download DriverCatalog - " + address);
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine("\r\n" + ex.Message + "\r\n");
                 err = true;
             }
         }
 
         public void getPackage()
         {
+            // Search XML document for Model, OS, Architecture 
+            // Get Path To DriverPackage
+            // Download Driver Package
+            // 
+
+
             try
             {
-                if (string.IsNullOrEmpty(DeviceModel)) throw new ArgumentNullException("DeviceModel Is Not Set");
-                string TargetModel = DeviceModel;
+                if (string.IsNullOrEmpty(this.TargetModel)) throw new ArgumentNullException("TargetModel Is Not Set");
 
                 while (!err)
                 {
@@ -215,7 +230,10 @@ namespace OSD
                     string Date = DateTime.Parse(GetAttributeValue(TargetNode, "dateTime")).ToString("MMMM dd, yyyy");
 
                     string results = String.Format(
-                        "\r\nFound Driver Package - \r\n Release: {0} \r\n Version: {1}\r\n Release Date: {2}\r\n",
+                        "\r\nFound Driver Package - " +
+                        "\r\n Model: {0} \r\n Operating System: {1} \r\n  Architecture: {2}" +
+                        "\r\n Release: {3} \r\n Version: {4}\r\n Release Date: {5}\r\n",
+                        TargetModel, "Windows 10", "x64",
                         GetAttributeValue(TargetNode, "releaseID"), Version, Date
                         );
 
@@ -230,8 +248,8 @@ namespace OSD
 
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
                 err = true;
+                Console.WriteLine("\r\n" + ex.Message + "\r\n");
                 return;
             }
         }
@@ -239,16 +257,19 @@ namespace OSD
         private string GetAttributeValue (XmlNode node, string Name)
         {
             string value = String.Empty;
+            string NodeName = String.Empty;
             
             try
             {
+                NodeName = node.Name;
                 value = node.Attributes[Name].Value;
-
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Failed to get '" + Name + "' attribute value for XML Node.\r\n" + ex.Message);
                 err = true;
+                Console.WriteLine(String.Format(
+                    "\r\nFailed to get '{0}' attribute value from XML Node '{1}'.\r\n{2}\r\n",
+                     Name, NodeName, ex.Message));
             }
 
             return value;
