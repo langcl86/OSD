@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Threading;
+using System.Linq;
 using System.Xml.Linq;
 using System.Xml;
 
@@ -13,8 +14,6 @@ namespace OSD
     public class Drivers
     {
         /// <summary>
-        /// TODO: Parse XML Catalog And Identify Driver Pack Path For DeviceModel
-        /// TODO: Identify Driver Pack Type (CAB/EXE) - Extract Driver Pack
         /// </summary>
         /// 
 
@@ -25,6 +24,7 @@ namespace OSD
         public string TargetDevice;
         public string DeviceModel;
         public string DriverCatalog;
+        public string DriverPackage;
         public string DriverPath;
         public string DriverOS;
 
@@ -43,25 +43,50 @@ namespace OSD
         public void NetCheck()
         {
             Ping ping = new Ping();
-            NetworkEnabled = ping.Send("google.com").Status == IPStatus.Success;               
+            NetworkEnabled = ping.Send("dell.com").Status == IPStatus.Success;               
         }
 
-        public string getCatalog()
+        public string getDrivers()
         {
+            if (null == DriverPackage) getCatalog();
+
             string target = TargetDevice;
+            string package = DriverPackage;
 
             try
             {
-                string address = @"https://downloads.dell.com/catalog/DriverPackCatalog.cab";
-                string cabFile = Path.Combine(target, Path.GetFileName(address));
+                while (!err)
+                { 
+                    if (string.IsNullOrEmpty(package)) throw new ArgumentNullException("DriverPackage Is Not Set");
+                
+                    string address = package;
+                    string filename = Path.GetFileName(package);
+                    string cabFile = Path.Combine(target, filename);
+                    string ext = Path.GetExtension(package).ToUpper();
 
-                if (getFile(address, cabFile))
-                {
-                    string xml = Path.Combine(target, "catalog.xml");
-                    string str = String.Format("{0} -F:* {1}", cabFile, xml);
+                    if (getFile(package, cabFile))
+                    {
+                        string dest = Path.Combine(TargetDevice, filename.Replace(ext, ""));
+                        Directory.CreateDirectory(dest);
 
-                    if (newProcess("expand.exe", str).ExitCode != 0) throw new Exception("Failed to extract Driver Catalog");
-                    DriverCatalog = xml;
+                        switch (ext)
+                        {
+                            case ".CAB":
+                                string str = String.Format("{0} -F:* {1}", cabFile, dest);
+                                if (newProcess("expand.exe", str).ExitCode != 0) throw new Exception("Failed to extract Driver Catalog");
+                                break;
+
+                            case ".EXE":
+                                break;
+
+                            default: throw new ArgumentException("Unrecognized file type");
+                        }
+
+
+                        DriverPath = dest;
+                    }
+
+                    break;
                 }
             }
             catch (Exception ex)
@@ -70,7 +95,7 @@ namespace OSD
                 return null;
             }
 
-            return DriverCatalog;
+            return DriverPath;
         }
 
         public bool getFile(string address, string filename)
@@ -79,6 +104,8 @@ namespace OSD
             {
                 if (string.IsNullOrEmpty(address) ||
                     string.IsNullOrEmpty(filename)) throw new ArgumentNullException();
+
+                if (!NetworkEnabled) throw new IOException();
 
                 System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
 
@@ -129,8 +156,103 @@ namespace OSD
             p.WaitForExit();
             return p;
         }
+
+        public void getCatalog()
+        {
+            string target = TargetDevice;
+            err = false;
+
+            try
+            {
+                string address = @"https://downloads.dell.com/catalog/DriverPackCatalog.cab";
+                string filename = Path.GetFileName(address);
+                string cabFile = Path.Combine(target, filename);
+
+                if (getFile(address, cabFile))
+                {
+                    string xml = Path.Combine(target, "catalog.xml");
+                    string str = String.Format("{0} -F:* {1}", cabFile, xml);
+
+                    if (newProcess("expand.exe", str).ExitCode != 0) throw new Exception("Failed to extract Driver Catalog");
+                    DriverCatalog = xml;
+                    getPackage();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                err = true;
+            }
+        }
+
+        public void getPackage()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(DeviceModel)) throw new ArgumentNullException("DeviceModel Is Not Set");
+                string TargetModel = DeviceModel;
+
+                while (!err)
+                {
+                    FileInfo catalog = new FileInfo(DriverCatalog);
+                    if (!catalog.Exists) throw new FileNotFoundException("Catalog not found");
+
+                    XmlDocument xDoc = new XmlDocument();
+                    xDoc.Load(catalog.FullName);
+                    var nsmgr = new XmlNamespaceManager(xDoc.NameTable);
+                    nsmgr.AddNamespace("ns", "openmanage/cm/dm");
+
+                    string pathModel = "//ns:DriverPackage/ns:SupportedSystems/ns:Brand/ns:Model[@name='" + TargetModel + "']";
+                    string pathOS = "/ns:SupportedOperatingSystems/ns:OperatingSystem[@osCode='Windows10' and @osArch='x64']";
+                    string xPath = String.Format("{0}/../../..{1}/../..", pathModel, pathOS);
+                    XmlNode TargetNode = xDoc.SelectNodes(xPath, nsmgr)[0];
+
+                    if (null == TargetNode) throw new Exception("Package Not Found");
+
+                    string Package = String.Join("/", "http://dl.dell.com", GetAttributeValue(TargetNode, "path"));
+                    string Version = String.Join(",", GetAttributeValue(TargetNode, "vendorVersion"),
+                                                      GetAttributeValue(TargetNode, "dellVersion"));
+                    string Date = DateTime.Parse(GetAttributeValue(TargetNode, "dateTime")).ToString("MMMM dd, yyyy");
+
+                    string results = String.Format(
+                        "\r\nFound Driver Package - \r\n Release: {0} \r\n Version: {1}\r\n Release Date: {2}\r\n",
+                        GetAttributeValue(TargetNode, "releaseID"), Version, Date
+                        );
+
+                    Console.WriteLine(results);
+                    DriverPackage = Package;
+                    getDrivers();
+                    return;
+                }
+
+                if (err) throw new Exception("Failed to find driver package in catalog");
+            }
+
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                err = true;
+                return;
+            }
+        }
+
+        private string GetAttributeValue (XmlNode node, string Name)
+        {
+            string value = String.Empty;
+            
+            try
+            {
+                value = node.Attributes[Name].Value;
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Failed to get '" + Name + "' attribute value for XML Node.\r\n" + ex.Message);
+                err = true;
+            }
+
+            return value;
+        }
     }
-
-
 }
 
