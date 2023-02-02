@@ -21,6 +21,8 @@ clang@spendmend.com
 - 2023-01-27 (clang): Added prompt to continue if no drivers are found to prevent auto-start with no drivers.
 #>
 
+Add-Type -Path "OSD.dll"
+$osdDrivers = [OSD.Drivers]::new();
 $ErrorActionPreference = "SilentlyContinue"
 $ComputerModel = (Get-CimInstance Win32_ComputerSystem).Model
 $Root = (Get-Location).Drive.Root
@@ -47,6 +49,7 @@ function eventInfo {
         if ([System.ConsoleColor].GetEnumValues() -contains $color) {
         $splat = @{ForegroundColor = $color}
         }
+
 		
 		Write-Host "`r`n+-----------------------------------------------------------------------+";
 		Write-Host $msg @splat
@@ -226,12 +229,22 @@ function Find-Drivers {
 #>
 	[System.IO.FileInfo]$drivers = ([System.IO.DirectoryInfo]$devPath).GetFiles("*.cab")[0]
 	
-	if ($drivers.Exists) {
-		Write-Host "`r`nDrivers found for "$ComputerModel"`r`nThese drivers will be applied to the image`r`n" -ForegroundColor Green
-		return $drivers
-	}
-	else {
-		Write-Host "`r`n!!! No drivers found for "$ComputerModel" !!!`r`nNo drivers will be installed`r`n" -ForegroundColor Red
+    try {    
+	    if ($drivers.Exists) {
+		    Write-Host "`r`nDrivers found for "$ComputerModel"`r`nThese drivers will be applied to the image`r`n" -ForegroundColor Green
+		    return $drivers
+	    }
+        elseif ($osdDrivers.NetworkEnabled) {
+            if ($osdDrivers.GetDriverPackage($ComputerModel)) {  
+                Write-Host "Device drivers will be downloaded after image has been applied`r`n";
+                return $osdDrivers.DriverPackage;
+            }
+        }
+
+        else { throw; }
+    }
+    catch {
+    	Write-Host "`r`n!!! No drivers found for "$ComputerModel" !!!`r`nNo drivers will be installed`r`n" -ForegroundColor Red
 		$cont = $null;
 		while ($cont -ne "y" -and $cont -ne "n")
 		{
@@ -239,7 +252,7 @@ function Find-Drivers {
 			if ($cont -eq "y") { wpeutil shutdown }
 		}
 		return $false
-	}
+    }
 }
 
 function ApplyDrivers ($src) {
@@ -275,12 +288,18 @@ function ApplyDrivers ($src) {
 		Expand $cab -F:* $path | Out-Null		
 		Remove-Item $cab -force
 		Write-Host "Done" -ForegroundColor Green
+   `]
+
+    else {
+        $osdDrivers.TargetDevice = $path;
+        $osdDrivers.getDrivers(); 
+    }
 
 		Write-Host "Installing device drivers..." -NoNewline
 		$log = Join-Path $logPath "dism-drivers.log"
 		dism /LogPath:$log /Image:W:\ /Add-Driver /Driver:$path /Recurse
 		Write-Host "`r`nDriver Installation has been completed." -ForegroundColor Green
-	}	
+	}
 }
 
 function  Set-AnswerFile {
