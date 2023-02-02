@@ -46,8 +46,9 @@ namespace OSD
             NetworkEnabled = ping.Send("dell.com").Status == IPStatus.Success;               
         }
 
-        public string getDrivers()
+        public string getDrivers(string model)
         {
+            TargetModel = model;
             if (null == DriverPackage) getCatalog();
 
             string target = TargetDevice;
@@ -80,7 +81,7 @@ namespace OSD
 
                             case ".EXE":
                                 proc = cabFile;
-                                param = "/ s / e =" + dest;
+                                param = "/s /e=" + dest;
                                 break;
 
                             default: throw new ArgumentException("Unrecognized file type");
@@ -183,7 +184,6 @@ namespace OSD
 
                     if (newProcess("expand.exe", str).ExitCode != 0) throw new Exception("Failed to extract Driver Catalog");
                     DriverCatalog = xml;
-                    getPackage();
                 }
 
                 else throw new IOException("Failed to download DriverCatalog - " + address);
@@ -195,16 +195,17 @@ namespace OSD
             }
         }
 
-        public void getPackage()
+        public bool GetDriverPackage(string model)
         {
             // Search XML document for Model, OS, Architecture 
             // Get Path To DriverPackage
-            // Download Driver Package
             // 
 
             try
             {
+                TargetModel = model;
                 if (string.IsNullOrEmpty(this.TargetModel)) throw new ArgumentNullException("TargetModel Is Not Set");
+                if (string.IsNullOrEmpty(this.DriverCatalog)) getCatalog();
 
                 TargetOS = "Windows10,x64";
                 string os = TargetOS.Split(',')[0];
@@ -242,8 +243,7 @@ namespace OSD
 
                     Console.WriteLine(results);
                     DriverPackage = Package;
-                    getDrivers();
-                    return;
+                    return true;
                 }
 
                 if (err) throw new Exception("Failed to find driver package in catalog");
@@ -253,8 +253,9 @@ namespace OSD
             {
                 err = true;
                 Console.WriteLine("\r\n" + ex.Message + "\r\n");
-                return;
             }
+
+            return false;
         }
 
         private string GetAttributeValue (XmlNode node, string Name)
@@ -276,6 +277,18 @@ namespace OSD
             }
 
             return value;
+        }
+    }
+
+    public class Bios
+    {
+        public string cctk;
+
+        public Bios()
+        {
+            string root = Path.GetPathRoot(System.Environment.SystemDirectory);
+            string cctkPath = Path.Combine(root, @"Command_Configure\x86_64\cctk.exe");
+            cctk = cctkPath;
         }
     }
 }
