@@ -9,9 +9,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("OSD")]
 [assembly: AssemblyDescription("Library used for OS Deployment")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("SpendMend")]
 [assembly: AssemblyProduct("OSD")]
-[assembly: AssemblyCopyright("Copyright ©  2023 CAL")]
+[assembly: AssemblyCopyright("clang@spendmend.com")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
