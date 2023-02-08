@@ -14,6 +14,8 @@ namespace OSD
     public class Drivers
     {
         /// <summary>
+        ///      This Class is used to obtain Dell device driver packs for the purposes of OS Deployment
+        ///      Ref: https://www.dell.com/support/kbdoc/en-us/000122176/driver-pack-catalog
         /// </summary>
         /// 
 
@@ -47,6 +49,15 @@ namespace OSD
 
         public void GetDrivers()
         {
+            /// <synopsis>
+            ///     Obtains driver pack for TargetModel.
+            ///     Driver catalog is download and extracted to TargetDevice.
+            ///     Driver pack is downloaded to TargetDevice As .CAB
+            ///     Driver pack is extracted to DriverPath
+            ///     DriverPackage is the location of the driver pack on the Dell server.
+            /// </synopsis>
+            /// 
+
             if (null == DriverPackage) getCatalog();
 
             string target = TargetDevice;
@@ -108,6 +119,11 @@ namespace OSD
 
         public bool getFile(string address, string filename)
         {
+            ///<synopsis>
+            ///     Helper function for downloading files
+            ///</synopsis>
+            ///
+
             try
             {
                 if (string.IsNullOrEmpty(address) ||
@@ -158,6 +174,11 @@ namespace OSD
 
         private Process newProcess(string filename, string args)
         {
+            ///<synopsis>
+            ///     Helper function for starting a new process.
+            /// </synopsis>
+            /// 
+
             ProcessStartInfo si = new ProcessStartInfo();
             si.FileName = filename;
             si.Arguments = args;
@@ -172,6 +193,10 @@ namespace OSD
 
         public void getCatalog()
         {
+
+            ///  - Download Dell Driver Pack Catalog 
+            ///  - Extract CAB file to TargetDevice
+
             error = false;
             string target = TargetDevice;
 
@@ -202,10 +227,13 @@ namespace OSD
 
         public void GetPackage(string Model)
         {
-            // Search XML document for Model, OS, Architecture 
-            // Get Path To DriverPackage
-            // Download Driver Package
-            // 
+            ///<synapsis>
+            ///     Search XML document for Model, OS, Architecture 
+            ///     Get Path To DriverPackage
+            ///     Download Driver Package
+            ///</synapsis>
+
+
 
             try
             {
@@ -264,6 +292,10 @@ namespace OSD
 
         private string GetAttributeValue (XmlNode node, string Name)
         {
+            ///<synopsis>
+            ///     This helper function returns the Value of an attribute within an XML node.
+            /// </synopsis>
+                     
             string value = String.Empty;
             string NodeName = String.Empty;
             
